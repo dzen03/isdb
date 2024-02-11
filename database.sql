@@ -232,3 +232,25 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Функция для добавления отчета о выполненной лабораторной работе студентом
+CREATE OR REPLACE FUNCTION add_report(course_name TEXT, lab_name TEXT, student_telegram_id INTEGER, message_id INTEGER) RETURNS VOID AS
+$$
+DECLARE
+    student_id INTEGER;
+    lab_id INTEGER;
+BEGIN
+    SELECT s.id INTO student_id
+    FROM student s
+    JOIN telegram t ON s.telegram_id = t.id
+    WHERE t.id = student_telegram_id;
+
+    SELECT l.id INTO lab_id
+    FROM lab l
+    JOIN course c ON l.course_id = c.id
+    WHERE c.name = course_name AND l.name = lab_name;
+
+    INSERT INTO report (lab_id, student_id, message_id) VALUES (lab_id, student_id, message_id);
+END;
+$$ LANGUAGE plpgsql;
+
+

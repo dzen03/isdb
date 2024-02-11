@@ -266,17 +266,21 @@ def send(message):
 # teacher zone 2
 @bot.message_handler(func=lambda x: True)
 def reply_with_mark(message):
-    doc = None
-    if message.reply_to_message is None:
-        bot.reply_to(message, "Вы должны ответить на документ")
-        return
+    try:
+        if message.reply_to_message is None:
+            bot.reply_to(message, "Вы должны ответить на документ")
+            return
 
-    if message.reply_to_message.document is not None:
-        doc = message.reply_to_message
-    else:
-        bot.reply_to(message, "Вы должны ответить на документ")
-        return
-    bot.reply_to(doc, message.text)
+        if message.reply_to_message.document is not None:
+            bot.send_message(message.reply_to_message.forward_from.id, message.reply_to_message.caption + ":\n" + message.text)
+        else:
+            bot.reply_to(message, "Вы должны ответить на документ")
+            return
+
+        bot.set_message_reaction(message.chat.id, message.id, [telebot.types.ReactionTypeEmoji("👍")])
+    except Exception as ex:
+        bot.set_message_reaction(message.chat.id, message.id, [telebot.types.ReactionTypeEmoji("👎")])
+        bot.reply_to(message, f'{ex}')
 
 
 if __name__ == "__main__":

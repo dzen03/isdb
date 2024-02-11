@@ -140,3 +140,95 @@ CREATE TRIGGER trg_check_report_lab
 BEFORE INSERT ON report
 FOR EACH ROW
 EXECUTE FUNCTION check_report_lab();
+
+-- Функция для регистрации студента
+CREATE OR REPLACE FUNCTION register_student(surname TEXT, name TEXT, group_number TEXT, isu_id INTEGER, telegram_id INTEGER) RETURNS VOID AS
+$$
+BEGIN
+    INSERT INTO telegram (id) VALUES (telegram_id) ON CONFLICT DO NOTHING;
+    INSERT INTO student (id, name, surname, group_id, telegram_id)
+    SELECT isu_id, name, surname, g.id, telegram_id
+    FROM "group" g
+    WHERE g.number = group_number;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Функция для удаления студента
+CREATE OR REPLACE FUNCTION delete_student(tg_id INTEGER) RETURNS VOID AS
+$$
+BEGIN
+    DELETE FROM student WHERE telegram_id = tg_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Функция для получения информации о студенте
+CREATE OR REPLACE FUNCTION get_student_info(tg_id INTEGER) RETURNS TABLE(name TEXT, surname TEXT, group_number TEXT, isu_id INTEGER) AS
+$$
+BEGIN
+    RETURN QUERY
+    SELECT s.name, s.surname, g.number, s.id
+    FROM student s
+    LEFT JOIN "group" g ON s.group_id = g.id
+    WHERE s.telegram_id = tg_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Функция для записи студента на курс
+CREATE OR REPLACE FUNCTION apply_to_course(name_ TEXT, tg_id INTEGER) RETURNS VOID AS
+$$
+BEGIN
+    INSERT INTO student_course (student_id, course_id)
+    SELECT s.id, c.id
+    FROM student s, course c
+    WHERE s.telegram_id = tg_id AND c.name = name_;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Функция для добавления преподавателя
+CREATE OR REPLACE FUNCTION add_teacher(surname TEXT, name TEXT, isu_id INTEGER, telegram_id INTEGER) RETURNS VOID AS
+$$
+BEGIN
+    INSERT INTO telegram (id) VALUES (telegram_id) ON CONFLICT DO NOTHING;
+    INSERT INTO prep (id, name, surname, telegram_id) VALUES (isu_id, name, surname, telegram_id);
+END;
+$$ LANGUAGE plpgsql;
+
+-- Функция для добавления курса
+CREATE OR REPLACE FUNCTION add_course(name_ TEXT, tg_id INTEGER) RETURNS VOID AS
+$$
+BEGIN
+    INSERT INTO course (name, prep_id)
+    SELECT name_, p.id
+    FROM prep p
+    WHERE p.telegram_id = tg_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Функция для добавления лабораторной работы
+CREATE OR REPLACE FUNCTION add_lab(course_name TEXT, lab_name TEXT, lab_text TEXT) RETURNS VOID AS
+$$
+BEGIN
+    INSERT INTO lab (name, task, course_id)
+    SELECT lab_name, lab_text, c.id
+    FROM course c
+    WHERE c.name = course_name;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Функция для получения информации о работах студентов по лабораторной
+CREATE OR REPLACE FUNCTION get_reports(course_name TEXT, lab_name TEXT, teacher_telegram_id INTEGER)
+    RETURNS TABLE (message_id BIGINT, chat_id BIGINT, name TEXT, surname TEXT, "group" TEXT, isu INTEGER) AS
+$$
+BEGIN
+    RETURN QUERY
+    SELECT r.message_id, s.telegram_id, s.name, s.surname, g.number, s.id
+    FROM report r
+    LEFT JOIN student s ON r.student_id = s.id
+    LEFT JOIN "group" g ON g.id = s.group_id
+    LEFT JOIN lab l ON l.id = r.lab_id
+    LEFT JOIN course c ON l.course_id = c.id
+    LEFT JOIN prep p ON c.prep_id = p.id
+    WHERE p.telegram_id = teacher_telegram_id AND c.name = course_name AND l.name = lab_name;
+END;
+$$ LANGUAGE plpgsql;
+

@@ -22,10 +22,7 @@ def register(message):
 
         conn = psycopg2.connect(config.DATABASE_URL, sslmode='require')
         c = conn.cursor()
-        c.execute('insert into telegram (id) values (%s) on conflict do nothing', (message.from_user.id,))
-        c.execute('insert into student (id, name, surname, group_id, telegram_id) '
-                  '(select %s, %s, %s, id, %s from "group" where number = %s)',
-                  (int(isu), name, surname, message.from_user.id, group))
+        c.callproc('register_student', (surname, name, group, isu, message.from_user.id))
         conn.commit()
         c.close()
         conn.close()
@@ -40,7 +37,7 @@ def delete_user(message):
     try:
         conn = psycopg2.connect(config.DATABASE_URL, sslmode='require')
         c = conn.cursor()
-        c.execute('delete from student where telegram_id = %s', (message.from_user.id,))
+        c.callproc('delete_student', (message.from_user.id,))
         conn.commit()
         c.close()
         conn.close()
@@ -55,10 +52,7 @@ def delete_user(message):
     try:
         conn = psycopg2.connect(config.DATABASE_URL, sslmode='require')
         c = conn.cursor()
-        c.execute('select name, surname, "group".number, student.id from student '
-                  'left join "group" on student.group_id = "group".id '
-                  'where telegram_id = %s', (message.from_user.id,))
-
+        c.callproc('get_student_info', (message.from_user.id,))
         name, surname, group, isu = c.fetchone()
         c.close()
         conn.close()
@@ -82,10 +76,7 @@ def apply_to_course(message):
 
         conn = psycopg2.connect(config.DATABASE_URL, sslmode='require')
         c = conn.cursor()
-        c.execute('insert into student_course (student_id, course_id) '
-                  '(select s.id, c.id from student s, course c '
-                  'where s.telegram_id = %s and c.name = %s)',
-                  (message.from_user.id, name))
+        c.callproc('apply_to_course', (name, message.from_user.id))
         conn.commit()
         c.close()
         conn.close()
@@ -117,10 +108,7 @@ def add_prep(message):
 
         conn = psycopg2.connect(config.DATABASE_URL, sslmode='require')
         c = conn.cursor()
-        c.execute('insert into telegram (id) values (%s) on conflict do nothing', (message.from_user.id,))
-        c.execute('insert into prep (id, name, surname, telegram_id) '
-                  'values (%s, %s, %s, %s)',
-                  (int(isu), name, surname, tg_id))
+        c.callproc('add_teacher', (surname, name, isu, tg_id))
         conn.commit()
         c.close()
         conn.close()
@@ -143,9 +131,7 @@ def add_course(message):
 
         conn = psycopg2.connect(config.DATABASE_URL, sslmode='require')
         c = conn.cursor()
-        c.execute('insert into course (name, prep_id) '
-                  '(select %s, prep.id from prep where telegram_id = %s)',
-                  (name, message.from_user.id))
+        c.callproc('add_course', (name, message.from_user.id))
         conn.commit()
         c.close()
         conn.close()
@@ -172,9 +158,7 @@ def add_lab(message):
 
         conn = psycopg2.connect(config.DATABASE_URL, sslmode='require')
         c = conn.cursor()
-        c.execute('insert into lab (name, task, course_id) '
-                  '(select %s, %s, id from course where course.name = %s)',
-                  (lab_name, lab_text, course_name))
+        c.callproc('add_lab', (course_name, lab_name, lab_text))
         conn.commit()
         c.close()
         conn.close()
@@ -199,14 +183,7 @@ def get(message):
 
         conn = psycopg2.connect(config.DATABASE_URL, sslmode='require')
         c = conn.cursor()
-        c.execute('select message_id, s.telegram_id, s.name, s.surname, g.number, s.id from report '
-                  'left join student s on report.student_id = s.id '
-                  'left join "group" g on g.id = s.group_id '
-                  'left join lab l on l.id = report.lab_id '
-                  'left join course c on l.course_id = c.id '
-                  'left join prep p on c.prep_id = p.id '
-                  'where p.telegram_id = %s and c.name = %s and l.name = %s',
-                  (message.from_user.id, course_name, lab_name))
+        c.callproc('get_reports', (course_name, lab_name, message.from_user.id))
 
         for report in c:
             message_id, chat_id, name, surname, group, isu = report
@@ -250,10 +227,7 @@ def send(message):
 
         conn = psycopg2.connect(config.DATABASE_URL, sslmode='require')
         c = conn.cursor()
-        c.execute('insert into report (lab_id, student_id, message_id) '
-                  '(select l.id, s.id, %s from lab l left join course c on l.course_id = c.id, student s '
-                  'where s.telegram_id = %s and c.name = %s and l.name = %s)',
-                  (message.id, message.from_user.id, course_name, lab_name))
+        c.callproc('add_report', (course_name, lab_name, message.from_user.id, message.id))
         conn.commit()
         c.close()
         conn.close()
@@ -272,7 +246,8 @@ def reply_with_mark(message):
             return
 
         if message.reply_to_message.document is not None:
-            bot.send_message(message.reply_to_message.forward_from.id, message.reply_to_message.caption + ":\n" + message.text)
+            bot.send_message(message.reply_to_message.forward_from.id,
+                             message.reply_to_message.caption + ":\n" + message.text)
         else:
             bot.reply_to(message, "Вы должны ответить на документ")
             return
